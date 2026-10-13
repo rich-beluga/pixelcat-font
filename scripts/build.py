@@ -270,27 +270,35 @@ def build(radius_ratio: float = DEFAULT_CORNER_RADIUS, output: Path | None = Non
     glyph_order = [".notdef"] + sorted(glyph_data.keys())
 
     pen_glyphs = {}
+    # Левый подшипник (lsb) обязан совпадать с xMin контура — иначе
+    # FreeType сдвигает глиф влево на величину расхождения.
+    glyph_lsb = {}
 
     pen = TTGlyphPen(None)
-    draw_outline(
-        pen,
-        rounded_rect_contour(
-            PIXEL_SIZE, 0,
-            GRID_W * PIXEL_SIZE - PIXEL_SIZE, (GRID_H - 4) * PIXEL_SIZE,
-        ),
-        radius_units,
+    notdef_contour = rounded_rect_contour(
+        PIXEL_SIZE, 0,
+        GRID_W * PIXEL_SIZE - PIXEL_SIZE, (GRID_H - 4) * PIXEL_SIZE,
     )
+    draw_outline(pen, notdef_contour, radius_units)
     pen_glyphs[".notdef"] = pen.glyph()
+    glyph_lsb[".notdef"] = min(x for (x, _), _ in notdef_contour)
 
     cmap = {}
     for gname, (cp, pixels) in glyph_data.items():
         cmap[cp] = gname
         pen = TTGlyphPen(None)
 
-        for contour in trace_outlines(pixels):
+        contours = trace_outlines(pixels)
+        for contour in contours:
             draw_outline(pen, contour, radius_units)
 
         pen_glyphs[gname] = pen.glyph()
+        # Скругление только срезает углы внутрь, поэтому минимум по
+        # вершинам контура равен xMin итогового outline.
+        glyph_lsb[gname] = (
+            min(x for contour in contours for (x, _), _ in contour)
+            if contours else 0
+        )
 
     fb = FontBuilder(UPM, isTTF=True)
     fb.setupGlyphOrder(glyph_order)
@@ -298,7 +306,7 @@ def build(radius_ratio: float = DEFAULT_CORNER_RADIUS, output: Path | None = Non
     fb.setupGlyf(pen_glyphs)
 
     advance_width = GRID_W * PIXEL_SIZE
-    metrics = {gname: (advance_width, 0) for gname in glyph_order}
+    metrics = {gname: (advance_width, glyph_lsb.get(gname, 0)) for gname in glyph_order}
     fb.setupHorizontalMetrics(metrics)
 
     fb.setupHorizontalHeader(
