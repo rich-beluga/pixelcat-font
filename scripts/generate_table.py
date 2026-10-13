@@ -12,7 +12,7 @@ def escape_char_for_markdown(char: str, cp: int) -> str:
     if char == "\\":
         return "**\\\\**"
     if char == "`":
-        return "** \\` **"
+        return "**\\`**"
     if char == "<":
         return "**&lt;**"
     if char == ">":
